@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+<html class="theme-next muse use-motion" lang>
+<head><meta name="generator" content="Hexo 3.9.0">
+  <meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css?v=4.7.0">
+
+<link rel="stylesheet" href="/css/main.css?v=7.1.2">
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=7.1.2">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=7.1.2">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=7.1.2">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=7.1.2" color="#222">
+
+
+
+
+
+
+
+<script id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Muse',
+    version: '7.1.2',
+    sidebar: {"position":"left","display":"hide","offset":12,"onmobile":false,"dimmer":false},
+    back2top: true,
+    back2top_sidebar: false,
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="继上一篇日志介绍微软的同态加密库SEAL实现的BFV方案，这一篇日志介绍SEAL实现的另一种方案，即CKKS方案。与BFV方案相比，CKKS方案最大的优势是能直接对双精度浮点类型的实数甚至复数进行编码，加密和运算。在BFV方案下，如果要使用BatchEncoder处理浮点数，需要先将浮点数乘以一个放大倍数后再round up成整数，然后再编码成明文多项式。每次乘法运算后会导致倍数逐渐放大，需要应用">
+<meta name="keywords" content="FHE">
+<meta property="og:type" content="article">
+<meta property="og:title" content="同态加密之CKKS方案">
+<meta property="og:url" content="http://yoursite.com/2019/02/18/同态加密之CKKS方案/index.html">
+<meta property="og:site_name" content="学而时习之">
+<meta property="og:description" content="继上一篇日志介绍微软的同态加密库SEAL实现的BFV方案，这一篇日志介绍SEAL实现的另一种方案，即CKKS方案。与BFV方案相比，CKKS方案最大的优势是能直接对双精度浮点类型的实数甚至复数进行编码，加密和运算。在BFV方案下，如果要使用BatchEncoder处理浮点数，需要先将浮点数乘以一个放大倍数后再round up成整数，然后再编码成明文多项式。每次乘法运算后会导致倍数逐渐放大，需要应用">
+<meta property="og:locale" content="default">
+<meta property="og:updated_time" content="2019-07-01T06:09:06.256Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="同态加密之CKKS方案">
+<meta name="twitter:description" content="继上一篇日志介绍微软的同态加密库SEAL实现的BFV方案，这一篇日志介绍SEAL实现的另一种方案，即CKKS方案。与BFV方案相比，CKKS方案最大的优势是能直接对双精度浮点类型的实数甚至复数进行编码，加密和运算。在BFV方案下，如果要使用BatchEncoder处理浮点数，需要先将浮点数乘以一个放大倍数后再round up成整数，然后再编码成明文多项式。每次乘法运算后会导致倍数逐渐放大，需要应用">
+
+
+
+
+
+  
+  
+  <link rel="canonical" href="http://yoursite.com/2019/02/18/同态加密之CKKS方案/">
+
+
+
+<script id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>同态加密之CKKS方案 | 学而时习之</title>
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .motion-element,
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-title { opacity: initial; }
+
+  .use-motion .logo,
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="default">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">学而时习之</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+    
+    
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="Toggle navigation bar">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+
+
+<nav class="site-nav">
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+        
+          
+          <li class="menu-item menu-item-home">
+
+    
+    
+      
+    
+
+    
+
+    <a href="/" rel="section"><i class="menu-item-icon fa fa-fw fa-home"></i> <br>Home</a>
+
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-archives">
+
+    
+    
+      
+    
+
+    
+
+    <a href="/archives/" rel="section"><i class="menu-item-icon fa fa-fw fa-archive"></i> <br>Archives</a>
+
+  </li>
+
+      
+      
+    </ul>
+  
+
+  
+    
+
+  
+
+  
+</nav>
+
+
+
+  
+
+
+
+</div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2019/02/18/同态加密之CKKS方案/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="Jin Chao">
+      <meta itemprop="description" content>
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="学而时习之">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">同态加密之CKKS方案
+
+              
+            
+          </h1>
+        
+
+        <div class="post-meta">
+
+          
+          
+          
+
+          
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">Posted on</span>
+              
+
+              
+                
+              
+
+              <time title="Created: 2019-02-18 14:47:42" itemprop="dateCreated datePublished" datetime="2019-02-18T14:47:42+08:00">2019-02-18</time>
+            </span>
+          
+
+          
+            
+
+            
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                
+                  <span class="post-meta-item-text">Edited on</span>
+                
+                <time title="Modified: 2019-07-01 14:09:06" itemprop="dateModified" datetime="2019-07-01T14:09:06+08:00">2019-07-01</time>
+              </span>
+            
+          
+
+          
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">In</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/算法和研究/" itemprop="url" rel="index"><span itemprop="name">算法和研究</span></a></span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+            
+          
+
+          
+          
+
+          
+
+          <br>
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>继上一篇日志介绍微软的同态加密库SEAL实现的BFV方案，这一篇日志介绍SEAL实现的另一种方案，即CKKS方案。与BFV方案相比，CKKS方案最大的优势是能直接对双精度浮点类型的实数甚至复数进行编码，加密和运算。在BFV方案下，如果要使用BatchEncoder处理浮点数，需要先将浮点数乘以一个放大倍数后再round up成整数，然后再编码成明文多项式。每次乘法运算后会导致倍数逐渐放大，需要应用程序自己记录和管理。然而，这里有个比较严重的问题是，在BFV的密文下，无法直接将放大的倍数缩小，导致放大倍数快速累积膨胀而超出明文多项式系数的模（同时也是编码进多项式的整数的模）而发生wrap around。如上篇日志所述，虽说这一问题可以通过CRT方法暂时解决，但这不是一个通用的方法，并且会成倍增加计算复杂度。CKKS的强大之处在于，它提供了一个密文的rescale操作，可以方便的将密文的放大倍数缩小，从而避免了放大倍数在计算过程中一直膨胀而带来的问题。<br><a id="more"></a></p>
+<h2 id="CKKS方案的参数"><a href="#CKKS方案的参数" class="headerlink" title="CKKS方案的参数"></a>CKKS方案的参数</h2><p>与BFV相比，CKKS方案的加密参数的一个最大不同就是没有plain_modulus。其主要的参数设置poly_modulus_degree和coeff_modulus与BFV方案的设置类似。CKKS的明文多项式系数以coeff_modulus为模，这一点与BFV不同。另外，CKKS的明文和密文都携带当前所用参数组的parm_id，而BFV只有密文携带parm_id。</p>
+<h2 id="CKKS方案的数据编码"><a href="#CKKS方案的数据编码" class="headerlink" title="CKKS方案的数据编码"></a>CKKS方案的数据编码</h2><p>SEAL中实现的CKKS编码器为CKKSEncoder，它在操作上类似BFV的BatchEncoder，但背后的数学原理不同。CKKSEncoder将一个含有（poly_modulus_degree / 2）个元素的数组编码进明文多项式，其中每个元素可以为实数或复数。<br>CKKSEncoder需要提供一个额外的参数：scale，其意义为将实数或复数编码进明文时的放大倍数。scale也决定了编码时以及最后计算结果的精度。另外，CKKS编码进明文多项式的数据是以coeff_modulus为模的，因此scale的取值也不能过大以致接近coeff_modulus的值。可以从CKKS的明文或密文方便的获取当前数据的scale的值。<br>CKKSEncoder也提供了接口在数据编码时指定使用参数链（modulus switching chain）上的某一组特定参数来进行编码。在对CKKS的密文进行加乘运算时需要保证双方密文的底层参数（coeff_modulus, poly_modulus_degree）一致。特别的，在进行加法运算时，还要保证双方当前scale的值一致。乘法运算不要求双方scale一致，但结果的scale是双方scale之积。</p>
+<h2 id="CKKS方案的模转换（modulus-switching）"><a href="#CKKS方案的模转换（modulus-switching）" class="headerlink" title="CKKS方案的模转换（modulus switching）"></a>CKKS方案的模转换（modulus switching）</h2><p>CKKS的modulus switching与BFV类似，就是从coeff_modulus中除去一个素数因子。值得注意的是，该操作不会改变实际数据scale的大小（与下面的rescaling操作相区别），因此在进行modulus switching时一定要注意switch之后的coeff_modulus要比scale因子大并有足够的空间容纳scale后的实际数据。</p>
+<h2 id="CKKS方案的rescaling操作"><a href="#CKKS方案的rescaling操作" class="headerlink" title="CKKS方案的rescaling操作"></a>CKKS方案的rescaling操作</h2><p>Rescaling操作是CKKS区别于BFV的一个重要操作。首先，rescaling与modulus switching类似，也是从coeff_modulus中除去一个素数因子。然后，rescaling的不同之处在于，它同时产生的效果是将当前的scale因子也除以该素数因子。前面曾提到BFV处理浮点数时最大的问题是密文中的scale因子会累积膨胀越来越大而无法减小，而CKKS可以通过rescaling降低密文的scale因子，从而有效的解决了处理浮点数时的scale问题。<br>应用程序可以直接手动修改CKKS明文或密文内部的scale。例如，直接将密文的scale乘以一个数，相当于对密文中的数据直接除以这个数（密文中的数据没变，scale变大了，那相对应表示的数据就变小了）。</p>
+<h2 id="CKKS方案密文中的噪音"><a href="#CKKS方案密文中的噪音" class="headerlink" title="CKKS方案密文中的噪音"></a>CKKS方案密文中的噪音</h2><p>CKKS密文中的噪音不同于BFV密文的noise budget。CKKS的密文中，噪音会占据低位部分，而实际数据因为进行了scale所以存在于高位部分。数据和噪音共存而较难被完全清晰的区分。每次操作导致的噪音增长，都会让噪音从低位向高位扩展。因此，需要防止scale过低时，高位的实际数据易与低位的噪音混合而导致精度下降或数据被覆盖。</p>
+<h2 id="CKKS方案的再线性化操作（Relinearization）"><a href="#CKKS方案的再线性化操作（Relinearization）" class="headerlink" title="CKKS方案的再线性化操作（Relinearization）"></a>CKKS方案的再线性化操作（Relinearization）</h2><p>CKKS的Relinearizaiton与BFV类似。需要注意的是需要进行Relinearization和rescaling两种操作时，一定要先进行relinearization再进行rescaling，否则SEAL会抛出异常。</p>
+<h2 id="CKKS方案的旋转操作-（Rotation）"><a href="#CKKS方案的旋转操作-（Rotation）" class="headerlink" title="CKKS方案的旋转操作 （Rotation）"></a>CKKS方案的旋转操作 （Rotation）</h2><p>CKKS的Rotation也与BFV类似，是对明文或密文内含slots的循环移动操作。旋转操作需要用到Galois Keys。由于Galois Keys的size比较大，因此在创建keys的时候可以根据需要只创建特定旋转步长的Keys（比如一次旋转一个slot），这样可以减少Keys的个数，以节省内存空间。<br>在需要进行Rotation和Rescaling两种操作时，理想情况下是先进行Rotation再进行Rescaling，因为Rotation（以及前面提到的Relinearizaiton）产生的噪音在大的scale下对数据精度的影响更小，并且在随后后进行的Rescaling会一定程度上将Rotation产生的噪音遮盖掉。</p>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+      
+    
+    
+
+    
+
+    <footer class="post-footer">
+      
+        
+          
+        
+        <div class="post-tags">
+          
+            <a href="/tags/FHE/" rel="tag"># FHE</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2019/02/08/同态加密之BFV方案/" rel="next" title="同态加密之BFV方案">
+                <i class="fa fa-chevron-left"></i> 同态加密之BFV方案
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2019/05/11/分圆多项式/" rel="prev" title="分圆多项式">
+                分圆多项式 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+  </div>
+
+
+          </div>
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            Table of Contents
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            Overview
+          </li>
+        </ul>
+      
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">Jin Chao</p>
+              <div class="site-description motion-element" itemprop="description"></div>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/">
+                
+                    <span class="site-state-item-count">6</span>
+                    <span class="site-state-item-name">posts</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-categories">
+                  
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">3</span>
+                    <span class="site-state-item-name">categories</span>
+                  
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">3</span>
+                    <span class="site-state-item-name">tags</span>
+                  
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+
+          
+
+          
+
+          
+          
+
+          
+            
+          
+          
+
+        </div>
+      </div>
+
+      
+      <!--noindex-->
+        <div class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+            
+            
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#CKKS方案的参数"><span class="nav-number">1.</span> <span class="nav-text">CKKS方案的参数</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#CKKS方案的数据编码"><span class="nav-number">2.</span> <span class="nav-text">CKKS方案的数据编码</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#CKKS方案的模转换（modulus-switching）"><span class="nav-number">3.</span> <span class="nav-text">CKKS方案的模转换（modulus switching）</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#CKKS方案的rescaling操作"><span class="nav-number">4.</span> <span class="nav-text">CKKS方案的rescaling操作</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#CKKS方案密文中的噪音"><span class="nav-number">5.</span> <span class="nav-text">CKKS方案密文中的噪音</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#CKKS方案的再线性化操作（Relinearization）"><span class="nav-number">6.</span> <span class="nav-text">CKKS方案的再线性化操作（Relinearization）</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#CKKS方案的旋转操作-（Rotation）"><span class="nav-number">7.</span> <span class="nav-text">CKKS方案的旋转操作 （Rotation）</span></a></li></ol></div>
+            
+
+          </div>
+        </div>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+  
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; <span itemprop="copyrightYear">2019</span>
+  <span class="with-love" id="animate">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Jin Chao</span>
+
+  
+
+  
+</div>
+
+
+  <div class="powered-by">Powered by <a href="https://hexo.io" class="theme-link" rel="noopener" target="_blank">Hexo</a> v3.9.0</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">Theme – <a href="https://theme-next.org" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> v7.1.2</div>
+
+
+
+
+        
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+    
+
+    
+  </div>
+
+  
+
+<script>
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <script src="/lib/jquery/index.js?v=3.4.1"></script>
+
+  
+  <script src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+
+  
+  <script src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+
+
+  
+
+
+  <script src="/js/utils.js?v=7.1.2"></script>
+
+  <script src="/js/motion.js?v=7.1.2"></script>
+
+
+
+  
+  
+
+
+  <script src="/js/schemes/muse.js?v=7.1.2"></script>
+
+
+
+  
+  <script src="/js/scrollspy.js?v=7.1.2"></script>
+<script src="/js/post-details.js?v=7.1.2"></script>
+
+
+
+  
+
+
+  <script src="/js/next-boot.js?v=7.1.2"></script>
+
+
+  
+
+  
+
+  
+
+  
+
+
+  
+
+
+  
+
+
+
+
+  
+
+  
+
+  
+  
+
+  
+  
+
+  
+    
+      <script type="text/x-mathjax-config">
+  
+
+  MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$', '$'], ['\\(', '\\)'] ],
+      processEscapes: true,
+      skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+    },
+    TeX: {
+      
+      equationNumbers: {
+        autoNumber: 'AMS'
+      }
+    }
+  });
+  MathJax.Hub.Register.StartupHook('TeX Jax Ready', function() {
+    MathJax.InputJax.TeX.prefilterHooks.Add(function(data) {
+      if (data.display) {
+        var next = data.script.nextSibling;
+        while (next && next.nodeName.toLowerCase() === '#text') { next = next.nextSibling }
+        if (next && next.nodeName.toLowerCase() === 'br') { next.parentNode.removeChild(next) }
+      }
+    });
+  });
+</script>
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Queue(function() {
+    var all = MathJax.Hub.getAllJax(), i;
+    for (i = 0; i < all.length; i += 1) {
+      document.getElementById(all[i].inputID + '-Frame').parentNode.className += ' has-jax';
+    }
+  });
+</script>
+<script src="//cdn.jsdelivr.net/npm/mathjax@2/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+    
+  
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>

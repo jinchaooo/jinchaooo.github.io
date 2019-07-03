@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+<html class="theme-next muse use-motion" lang>
+<head><meta name="generator" content="Hexo 3.9.0">
+  <meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css?v=4.7.0">
+
+<link rel="stylesheet" href="/css/main.css?v=7.1.2">
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=7.1.2">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=7.1.2">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=7.1.2">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=7.1.2" color="#222">
+
+
+
+
+
+
+
+<script id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Muse',
+    version: '7.1.2',
+    sidebar: {"position":"left","display":"hide","offset":12,"onmobile":false,"dimmer":false},
+    back2top: true,
+    back2top_sidebar: false,
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="学习同态加密也有一段时间了。对于工程背景非数学专业的人来说，这个领域还是有点入门门槛的。前几个月一直徘徊在概念理解阶段，后来对这一课题有了一个整体的认识，也在将同态加密的packing和神经网络结合应用方面有了些自己的想法和实现。可以说基本上入门了，但前面还有非常多的东西要学。 今天来记录一下最近学习微软的同态加密库SEAL中BFV方案的一些笔记。BFV与BGV，CKKS等是同态加密基于RLWE困">
+<meta name="keywords" content="FHE">
+<meta property="og:type" content="article">
+<meta property="og:title" content="同态加密之BFV方案">
+<meta property="og:url" content="http://yoursite.com/2019/02/08/同态加密之BFV方案/index.html">
+<meta property="og:site_name" content="学而时习之">
+<meta property="og:description" content="学习同态加密也有一段时间了。对于工程背景非数学专业的人来说，这个领域还是有点入门门槛的。前几个月一直徘徊在概念理解阶段，后来对这一课题有了一个整体的认识，也在将同态加密的packing和神经网络结合应用方面有了些自己的想法和实现。可以说基本上入门了，但前面还有非常多的东西要学。 今天来记录一下最近学习微软的同态加密库SEAL中BFV方案的一些笔记。BFV与BGV，CKKS等是同态加密基于RLWE困">
+<meta property="og:locale" content="default">
+<meta property="og:updated_time" content="2019-07-01T09:46:00.152Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="同态加密之BFV方案">
+<meta name="twitter:description" content="学习同态加密也有一段时间了。对于工程背景非数学专业的人来说，这个领域还是有点入门门槛的。前几个月一直徘徊在概念理解阶段，后来对这一课题有了一个整体的认识，也在将同态加密的packing和神经网络结合应用方面有了些自己的想法和实现。可以说基本上入门了，但前面还有非常多的东西要学。 今天来记录一下最近学习微软的同态加密库SEAL中BFV方案的一些笔记。BFV与BGV，CKKS等是同态加密基于RLWE困">
+
+
+
+
+
+  
+  
+  <link rel="canonical" href="http://yoursite.com/2019/02/08/同态加密之BFV方案/">
+
+
+
+<script id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>同态加密之BFV方案 | 学而时习之</title>
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .motion-element,
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-title { opacity: initial; }
+
+  .use-motion .logo,
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="default">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">学而时习之</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+    
+    
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="Toggle navigation bar">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+
+
+<nav class="site-nav">
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+        
+          
+          <li class="menu-item menu-item-home">
+
+    
+    
+      
+    
+
+    
+
+    <a href="/" rel="section"><i class="menu-item-icon fa fa-fw fa-home"></i> <br>Home</a>
+
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-archives">
+
+    
+    
+      
+    
+
+    
+
+    <a href="/archives/" rel="section"><i class="menu-item-icon fa fa-fw fa-archive"></i> <br>Archives</a>
+
+  </li>
+
+      
+      
+    </ul>
+  
+
+  
+    
+
+  
+
+  
+</nav>
+
+
+
+  
+
+
+
+</div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2019/02/08/同态加密之BFV方案/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="Jin Chao">
+      <meta itemprop="description" content>
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="学而时习之">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">同态加密之BFV方案
+
+              
+            
+          </h1>
+        
+
+        <div class="post-meta">
+
+          
+          
+          
+
+          
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">Posted on</span>
+              
+
+              
+                
+              
+
+              <time title="Created: 2019-02-08 09:47:56" itemprop="dateCreated datePublished" datetime="2019-02-08T09:47:56+08:00">2019-02-08</time>
+            </span>
+          
+
+          
+            
+
+            
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                
+                  <span class="post-meta-item-text">Edited on</span>
+                
+                <time title="Modified: 2019-07-01 17:46:00" itemprop="dateModified" datetime="2019-07-01T17:46:00+08:00">2019-07-01</time>
+              </span>
+            
+          
+
+          
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">In</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/算法和研究/" itemprop="url" rel="index"><span itemprop="name">算法和研究</span></a></span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+            
+          
+
+          
+          
+
+          
+
+          <br>
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>学习同态加密也有一段时间了。对于工程背景非数学专业的人来说，这个领域还是有点入门门槛的。前几个月一直徘徊在概念理解阶段，后来对这一课题有了一个整体的认识，也在将同态加密的packing和神经网络结合应用方面有了些自己的想法和实现。可以说基本上入门了，但前面还有非常多的东西要学。</p>
+<p>今天来记录一下最近学习微软的同态加密库SEAL中BFV方案的一些笔记。BFV与BGV，CKKS等是同态加密基于RLWE困难问题的一类方案中最出名的几种方案。这里先从如何使用BFV库的角度来理解BFV方案相关的概念。后面会再从算法和原理的角度深入分析。</p>
+<h2 id="BFV方案的参数"><a href="#BFV方案的参数" class="headerlink" title="BFV方案的参数"></a>BFV方案的参数</h2><p>要使用BFV，首先要设置相关的参数。目前BFV的EncryptionParameters包含以下参数。</p>
+<style>
+table th:first-of-type {
+    width: 30%;
+}
+table tbody tr:nth-child(odd) {
+    background: #F5F5F5;
+}
+table tbody tr:nth-child(even) {
+    background: none;
+}
+table tbody tr:hover:nth-child(odd) {
+    background: #F5F5F5;
+}
+table tbody tr:hover:nth-child(even) {
+    background: none;
+}
+</style>
+
+<div class="table-container">
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>poly_modulus_degree</td>
+<td>环的分母项（分圆多项式）x^n + 1中n的值。明文多项式或密文多项式中最高次数为n - 1。BFV方案中n必须为2的幂，通常取值为2^10到2^15。n取值越大则RLWE加密方案越安全，但对应的密文也越大，各种计算等操作也更慢。</td>
+</tr>
+<tr>
+<td>coeff_modulus</td>
+<td><strong>1)</strong>. 密文多项式系数的模。通常记为q或logq。<br><strong>2)</strong>. q是决定密文噪音容忍度noise budget的重要参数。q值越大则noise budget越大，密文可支持更大的运算深度。但q值越大则RLWE加密方案越不安全（需要增大n值来“中和”）。<br><strong>3)</strong>. BFV的q是多个较小的素数的积，素数可以为30bit到60bit。SEAL实现的库中预定义了一些素数表，可以用small_mods_xxbits(int index)来获取。<br><strong>4)</strong>. 相应的，SEAL也提供了coeff_modulus_128bit(int n)等函数来获取在128bit等安全级别下某n值所对应的一组素数模数。<br><strong>5)</strong>. SEAL中使用NTT来实现多项式在素数模下的乘积，因此需要每个素数都满足在模2n下与1同余。<br><strong>6)</strong>. 另外，素数模的个数也是影响加密计算等操作的重要因素，因此，在允许的范围内尽量使用较大的素数模以减少总的素数模的个数。</td>
+</tr>
+<tr>
+<td>plain_modulus</td>
+<td><strong>1)</strong>. 明文多项式系数的模。明文多项式系数的模可以取值任意的正整数。在新加密生成的密文多项式中的noise budget的值为log2（coeff_modulus/plain_modulus）bits，而每次同态乘法操作所消耗的noise budget为log2（plain_modulus）加上一些其它的项。因此在允许的范围内，明文多项式系数的模取值越小越好。但是也有以下几点需要注意：<br><strong>2)</strong>. 如果要使用packing效果的BatchEncoder，需要plain_modulus的取值为在模2n下与1同余的素数。这时，明文多项式可以看作内含一个2-by-(n/2)的矩阵，每个矩阵元素是一个在模plain_modulus下的整数。<br><strong>3)</strong>.随着计算深度的增加，明文多项式内pack的值可能会越来越大，最终超出plain_modulus时会发生wrap around，导致解密后得不到实际应用想要的结果。因此需要设置plain_modulus的值大于预期的最终结果以防止wrap around的发生。<br><strong>4)</strong>. 如果实际应用所需要的plain_modulus过大（如最终结果的值过大），可以采用中国剩余定理CRT的方法：选取一组小的素数（满足模2n下与1同余以利用packing）作为plain_modulus，将实际应用的输入对这组素数CRT分解后分别在每个素数plain_modulus下运算，得到的一组结果再通过逆CRT合并后得到需要的原始结果。实际上，通过逆CRT合并得出的结果是在以所有素数plain_modulus乘积为模下的结果，因为这个乘积大于预计的原始结果，所以不会有wrap around发生。</td>
+</tr>
+<tr>
+<td>noise_standard_deviation</td>
+<td>默认值是3.20，一般不需要修改。</td>
+</tr>
+<tr>
+<td>random_generator</td>
+<td>自定义随机数生成器。</td>
+</tr>
+</tbody>
+</table>
+</div>
+<a id="more"></a>
+<h2 id="BFV方案将数值编码进明文多项式的方法（encode）"><a href="#BFV方案将数值编码进明文多项式的方法（encode）" class="headerlink" title="BFV方案将数值编码进明文多项式的方法（encode）"></a>BFV方案将数值编码进明文多项式的方法（encode）</h2><p>BFV的加密过程是将明文多项式转化为密文多项式，而不是直接对整数或浮点数进行加密操作。因此，编码操作就是将整数或浮点数转化为明文多项式，以便进行随后的加密操作。BFV目前主要有三种编码方式：IntegerEncoder, FractionalEncoder, 和BatchEncoder。</p>
+<div class="table-container">
+<table>
+<thead>
+<tr>
+<th>编码器</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IntegerEncoder</td>
+<td>将一个整数编码成一个明文多项式。先将整数表示成b进制的形式，注意此时b进制的每一位系数可能为正或负，其取值范围为-b/2 … b/2 - 1（b为偶数）或-(b-1)/2 … (b-1)/2 （b为奇数）。当b为2时稍为特殊，若整数为正则系数取值为0或1，若整数为负则系数取值为0或-1。接下来将b换为x得到明文多项式。<br><strong>注意1）</strong>明文多项式实际上是在一个环中，环的模多项式为x^n + 1。因此要确保计算过程中明文多项式的最高次数小于n，否则会发生wrap around而得不到期望结果。另外，明文多项式的系数是在模plain_modulus下的，因此也要确保运算过程中系数比plain_modulus小而不发生wrap around。<br><strong>注意2）</strong>负系数在转换为多项式时以模plain_modulus后的正数表示和运算。<br><strong>注意3）</strong>解码只需将b带入x计算即可。</td>
+</tr>
+<tr>
+<td>FractionalEncoder</td>
+<td>将一个浮点数编码成一个明文多项式。浮点数的整数部分跟整数编码方法一样。小数部分对应项的次数为负数，此时给每一项乘以-x^n（类似于1与-x^n在模x^n + 1下同余）转换为正的高次项。浮点数的加乘运算对应明文多项式的加乘运算，除了要注意系数不发生wrap around外，还要注意低次项和高次项在运算过程中向中间靠拢时不发生交叉覆盖。解码时，低次的整数部分直接将b代入x，高次的小数部分转回负次数后代入。</td>
+</tr>
+<tr>
+<td>BatchEncoder</td>
+<td>将一组模plain_modulus下的整数编码成一个明文多项式。这是BFV的数据packing方式：明文多项式可以看作2-by-(n/2)的整数矩阵。（此时需要plain_modulus是在模2n下与1同余的素数。）BatchEncoder背后的数学原理是<strong>基于多项式环的</strong>中国剩余定理（R-CRT）。<br>事实上，<strong>在模plain_modulus的意义下</strong>，环的模多项式(x^n + 1)可以分解为(x - a1)(x - a2)…(x - an)的形式，其中a1 … an是不同的2n次本原单位根。根据R-CRT，模(x^n + 1)的多项式与n个分别模(x - a1)到模(x - an)的一组多项式（此处实际是n个整数，因为模是1次多项式）同构。<br>使用BatchEncoder时还有一个很重要的功能是可以旋转移动内含矩阵每行中的元素（横向旋转），也可以将矩阵两行互换（纵向旋转）。旋转基于的是多项式环的自同构原理，具体实现上是将x^k代替x代入原多项式中。对于不同的旋转步数，需要在(Z mod 2n)*中找出相应的k值。</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h2 id="BFV方案的再线性化操作（relinearization）"><a href="#BFV方案的再线性化操作（relinearization）" class="headerlink" title="BFV方案的再线性化操作（relinearization）"></a>BFV方案的再线性化操作（relinearization）</h2><p>BFV密文的size是其所含的多项式的个数。初始时密文由2个多项式组成，其size为2。但是，每次乘法操作后，结果密文的size变为M + N - 1，其中M和N分别为参与乘法操作的密文的size。虽然说size变大后密文还能正常解密，但是会带来两个负面影响。<strong>第一，乘法和加法的计算开销变大。</strong>每次密文乘法需要进行O(M * N)次多项式乘法，而密文加法则需要O(M + N)次多项式加法。<strong>第二，每次乘法操作所消耗的noise budget也变大。</strong>再线性化Relinearization可以让密文的size重新回到最小值2，因此对性能有较大的好处。Relinearization操作需要先创建相应的Relinearization Keys，每一次从size为M降为2的操作需要M - 2个Keys。如果需要relinearize的密文的size与relinearization操作的keys的数目不匹配，则会发生错误。<br>然而，Relinearization操作本身也有计算开销和noise budget消耗，并且与decomposition bit count参数（记为w）相关。w取值为1到60之间的整数。总体来说，若w取值小，计算速度较慢，但每次操作noise budget消耗很少；反之，若w取值大，计算速度较快，但每次操作noise budget消耗很大。但是，虽然某个w可能取值较大，但该w在每一组加密参数取值下都对应一个<strong>noise budget阈值</strong>，当ciphertext的noise budget在该阈值之上时，每次relinearization操作会消耗较多的noise budget；一旦ciphertext的noise budget减到低过该阈值，再进行relinearizaiton的noise budget消耗会下降到很小。</p>
+<h2 id="BFV方案BatchEncoding下的旋转操作（Rotation）"><a href="#BFV方案BatchEncoding下的旋转操作（Rotation）" class="headerlink" title="BFV方案BatchEncoding下的旋转操作（Rotation）"></a>BFV方案BatchEncoding下的旋转操作（Rotation）</h2><p>如前所述，在BatchEncoding下，每个密文可看作内含一个2-by-(n/2)的矩阵。而旋转操作Rotation就是将矩阵内的元素按行或列循环移位。与relinearization操作一样，Rotation也是基于Decomposition Bit Count参数w，w在1到60之间取值越大则计算越快，但消耗的noise budget也越多。同样的，在某个w和一组加密参数下存在对应的noise budget阈值，当密文的noise budget大于阈值时，大的w会导致noise budget下降快，但一旦下降到低于该阈值，则再进行Rotation操作noise budget消耗会下降到很小。<br>进行旋转操作需要先生成所需的Galois Keys。一般来说，每一个2的幂次的旋转步长需要一个对应的Galois Key，非2的幂次的旋转步长表示成多个2的幂次相加的形式。因此要生成适合slots个数为N下的所有旋转步长的Galois Keys，只需生成logN个keys。<br>另外，参数w会影响生成的Galois Keys的大小。每一个decompostion因子对应GaloisKey中的一个数据项，w越小对应的数据项越多，Key的size越大。</p>
+<h2 id="BFV方案的模转换操作（modulus-switching）"><a href="#BFV方案的模转换操作（modulus-switching）" class="headerlink" title="BFV方案的模转换操作（modulus switching）"></a>BFV方案的模转换操作（modulus switching）</h2><p>BFV密文多项式系数的模coeff_modulus是一组素数的乘积。在初始化一组加密参数时，SEAL会自动生成一个参数链，链上的每个节点都是由初始参数推算出的一组新的加密参数，并且，每个节点与前一个节点的参数相比只是在coeff_modulus上减少了一个素数，其它的完全一样。链上最后一组参数的index为0，且满足参数的有效性：coeff_modulus大于plain_modulus的值。<br>初始创建的参数组中coeff_modulus是最大的，每次modulus switching都会减少coeff_modulus，从而可能导致noise budget降低。然而，modulus switching也有一些潜在的好处。</p>
+<ul>
+<li>密文大小与coeff_modulus线性正相关，如果确定密文不需再参与计算后，可以将其coeff_modulus降到最低值，以降低存储和传输的开销。需要注意的是，只要密钥是创建给参数链上高的coeff_modulus的，那它可以用来解密链上所有coeff_modulus比它低的参数所对应的密文。</li>
+<li>密文在经过计算后其内部的noise budget已经降低，此时如果<strong>适当降低</strong>coeff_modulus，有可能不会对noise budget产生影响。</li>
+<li>有些情况下即使减小coeff_modulus会降低noise budget，但可以有效降低随后的计算开销（加快计算速度），并减小密文的大小，因此仍然是一种有益的trade off。</li>
+</ul>
+<p>BFV方案中的modulus switching不是必需的，因此在创建参数时可以选择只生成单一参数组而不生成参数链。与BFV不同，CKKS方案中的modulus switching有着更重要的作用。</p>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+      
+    
+    
+
+    
+
+    <footer class="post-footer">
+      
+        
+          
+        
+        <div class="post-tags">
+          
+            <a href="/tags/FHE/" rel="tag"># FHE</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2019/01/11/关于Go语言的一些笔记/" rel="next" title="关于Go语言指针的一些笔记">
+                <i class="fa fa-chevron-left"></i> 关于Go语言指针的一些笔记
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2019/02/18/同态加密之CKKS方案/" rel="prev" title="同态加密之CKKS方案">
+                同态加密之CKKS方案 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+  </div>
+
+
+          </div>
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            Table of Contents
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            Overview
+          </li>
+        </ul>
+      
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">Jin Chao</p>
+              <div class="site-description motion-element" itemprop="description"></div>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/">
+                
+                    <span class="site-state-item-count">6</span>
+                    <span class="site-state-item-name">posts</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-categories">
+                  
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">3</span>
+                    <span class="site-state-item-name">categories</span>
+                  
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">3</span>
+                    <span class="site-state-item-name">tags</span>
+                  
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+
+          
+
+          
+
+          
+          
+
+          
+            
+          
+          
+
+        </div>
+      </div>
+
+      
+      <!--noindex-->
+        <div class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+            
+            
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#BFV方案的参数"><span class="nav-number">1.</span> <span class="nav-text">BFV方案的参数</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#BFV方案将数值编码进明文多项式的方法（encode）"><span class="nav-number">2.</span> <span class="nav-text">BFV方案将数值编码进明文多项式的方法（encode）</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#BFV方案的再线性化操作（relinearization）"><span class="nav-number">3.</span> <span class="nav-text">BFV方案的再线性化操作（relinearization）</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#BFV方案BatchEncoding下的旋转操作（Rotation）"><span class="nav-number">4.</span> <span class="nav-text">BFV方案BatchEncoding下的旋转操作（Rotation）</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#BFV方案的模转换操作（modulus-switching）"><span class="nav-number">5.</span> <span class="nav-text">BFV方案的模转换操作（modulus switching）</span></a></li></ol></div>
+            
+
+          </div>
+        </div>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+  
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; <span itemprop="copyrightYear">2019</span>
+  <span class="with-love" id="animate">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Jin Chao</span>
+
+  
+
+  
+</div>
+
+
+  <div class="powered-by">Powered by <a href="https://hexo.io" class="theme-link" rel="noopener" target="_blank">Hexo</a> v3.9.0</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">Theme – <a href="https://theme-next.org" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> v7.1.2</div>
+
+
+
+
+        
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+    
+
+    
+  </div>
+
+  
+
+<script>
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <script src="/lib/jquery/index.js?v=3.4.1"></script>
+
+  
+  <script src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+
+  
+  <script src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+
+
+  
+
+
+  <script src="/js/utils.js?v=7.1.2"></script>
+
+  <script src="/js/motion.js?v=7.1.2"></script>
+
+
+
+  
+  
+
+
+  <script src="/js/schemes/muse.js?v=7.1.2"></script>
+
+
+
+  
+  <script src="/js/scrollspy.js?v=7.1.2"></script>
+<script src="/js/post-details.js?v=7.1.2"></script>
+
+
+
+  
+
+
+  <script src="/js/next-boot.js?v=7.1.2"></script>
+
+
+  
+
+  
+
+  
+
+  
+
+
+  
+
+
+  
+
+
+
+
+  
+
+  
+
+  
+  
+
+  
+  
+
+  
+    
+      <script type="text/x-mathjax-config">
+  
+
+  MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$', '$'], ['\\(', '\\)'] ],
+      processEscapes: true,
+      skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+    },
+    TeX: {
+      
+      equationNumbers: {
+        autoNumber: 'AMS'
+      }
+    }
+  });
+  MathJax.Hub.Register.StartupHook('TeX Jax Ready', function() {
+    MathJax.InputJax.TeX.prefilterHooks.Add(function(data) {
+      if (data.display) {
+        var next = data.script.nextSibling;
+        while (next && next.nodeName.toLowerCase() === '#text') { next = next.nextSibling }
+        if (next && next.nodeName.toLowerCase() === 'br') { next.parentNode.removeChild(next) }
+      }
+    });
+  });
+</script>
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Queue(function() {
+    var all = MathJax.Hub.getAllJax(), i;
+    for (i = 0; i < all.length; i += 1) {
+      document.getElementById(all[i].inputID + '-Frame').parentNode.className += ' has-jax';
+    }
+  });
+</script>
+<script src="//cdn.jsdelivr.net/npm/mathjax@2/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+    
+  
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>
